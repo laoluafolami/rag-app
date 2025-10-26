@@ -157,14 +157,14 @@ st.markdown(
             font-weight: bold;
         }
         .stFileUploader > div > div > div > div > button {
-            background-color: #4b6cb7 !important;
+            background-color: #4CAF50 !important;
             color: white !important;
             border-radius: 8px;
             padding: 8px 16px;
             font-weight: bold;
         }
         .stFileUploader > div > div > div > div > button:hover {
-            background-color: #3b5998 !important;
+            background-color: #45a049 !important;
         }
         .stSelectbox > div > div > select {
             border-radius: 8px;
@@ -198,14 +198,14 @@ st.markdown(
             font-weight: bold;
         }
         .dark-theme .stFileUploader > div > div > div > div > button {
-            background-color: #4b6cb7 !important;
+            background-color: #4CAF50 !important;
             color: #ffffff !important;
             border-radius: 8px;
             padding: 8px 16px;
             font-weight: bold;
         }
         .dark-theme .stFileUploader > div > div > div > div > button:hover {
-            background-color: #3b5998 !important;
+            background-color: #45a049 !important;
         }
         .dark-theme .stSelectbox > div > div > select {
             background-color: #2e2e2e;
