@@ -4,6 +4,8 @@ langchain
 langchain-text-splitters
 langchain-community
 langchain-groq
+langchain-ollama
 faiss-cpu
 beautifulsoup4
 sentence-transformers
+pypdf
