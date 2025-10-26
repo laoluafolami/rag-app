@@ -1,7 +1,7 @@
 import os
 import streamlit as st
 from dotenv import load_dotenv
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyPDFLoader, TextLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_groq import ChatGroq
@@ -10,8 +10,8 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import PromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from io import BytesIO
 import logging
+import time
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -24,19 +24,32 @@ def load_documents(uploaded_file):
     if uploaded_file is not None:
         try:
             # Save uploaded file temporarily
-            with open("temp.pdf", "wb") as f:
+            file_extension = uploaded_file.name.split('.')[-1].lower()
+            temp_file_path = f"temp.{file_extension}"
+            with open(temp_file_path, "wb") as f:
                 f.write(uploaded_file.read())
-            loader = PyPDFLoader("temp.pdf")
+            
+            # Load based on file type
+            if file_extension == "pdf":
+                loader = PyPDFLoader(temp_file_path)
+            elif file_extension == "txt":
+                loader = TextLoader(temp_file_path)
+            elif file_extension == "docx":
+                loader = Docx2txtLoader(temp_file_path)
+            else:
+                logger.error(f"Unsupported file extension: {file_extension}")
+                return []
+            
             docs = loader.load()
-            logger.info(f"Loaded {len(docs)} pages from the PDF")
+            logger.info(f"Loaded {len(docs)} pages from {uploaded_file.name}")
             return docs
         except Exception as e:
-            logger.error(f"Error loading PDF: {str(e)}")
+            logger.error(f"Error loading file {uploaded_file.name}: {str(e)}")
             return []
         finally:
             # Clean up temporary file
-            if os.path.exists("temp.pdf"):
-                os.remove("temp.pdf")
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
     return []
 
 def split_documents(docs):
@@ -91,68 +104,231 @@ def setup_rag_chain(vector_store):
     return rag_chain
 
 # Streamlit App
-st.set_page_config(page_title="RAG AI App", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Smart Document Query", page_icon="📚", layout="wide")
+
+# Font Awesome for icons
+st.markdown(
+    """
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    """,
+    unsafe_allow_html=True
+)
+
+# Custom CSS for stunning UI
+st.markdown(
+    """
+    <style>
+        .stApp {
+            background: linear-gradient(135deg, #e0e7ff 0%, #c3e8ff 100%);
+            font-family: 'Arial', sans-serif;
+        }
+        [data-testid="stSidebar"] {
+            background: linear-gradient(135deg, #4b6cb7 0%, #182848 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+        }
+        .stButton > button {
+            background-color: #4CAF50;
+            color: white;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        .stButton > button:hover {
+            background-color: #45a049;
+        }
+        .stTextInput > div > div > input {
+            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            background-color: #ffffff;
+            color: #333;
+        }
+        .stFileUploader > div > div > div {
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #d1d5db;
+            color: #182848;
+        }
+        .stFileUploader > div > div > div > label {
+            color: #182848 !important;
+            font-weight: bold;
+        }
+        .stFileUploader > div > div > div > div > button {
+            background-color: #4b6cb7 !important;
+            color: white !important;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-weight: bold;
+        }
+        .stFileUploader > div > div > div > div > button:hover {
+            background-color: #3b5998 !important;
+        }
+        .stSelectbox > div > div > select {
+            border-radius: 8px;
+            padding: 10px;
+            background-color: #ffffff;
+            color: #333;
+        }
+        [data-baseweb="select"] > div {
+            background-color: #ffffff !important;
+            color: #333 !important;
+        }
+        .dark-theme .stApp {
+            background: linear-gradient(135deg, #1c2526 0%, #2e3b3e 100%);
+            color: #e0e0e0;
+        }
+        .dark-theme [data-testid="stSidebar"] {
+            background: linear-gradient(135deg, #2c3e50 0%, #1a252f 100%);
+            color: #e0e0e0;
+        }
+        .dark-theme .stTextInput > div > div > input {
+            background-color: #2e2e2e;
+            color: #e0e0e0;
+            border: 1px solid #555;
+        }
+        .dark-theme .stFileUploader > div > div > div {
+            background-color: #1a252f;
+            color: #ffffff;
+        }
+        .dark-theme .stFileUploader > div > div > div > label {
+            color: #ffffff !important;
+            font-weight: bold;
+        }
+        .dark-theme .stFileUploader > div > div > div > div > button {
+            background-color: #4b6cb7 !important;
+            color: #ffffff !important;
+            border-radius: 8px;
+            padding: 8px 16px;
+            font-weight: bold;
+        }
+        .dark-theme .stFileUploader > div > div > div > div > button:hover {
+            background-color: #3b5998 !important;
+        }
+        .dark-theme .stSelectbox > div > div > select {
+            background-color: #2e2e2e;
+            color: #e0e0e0;
+        }
+        .dark-theme [data-baseweb="select"] > div {
+            background-color: #2e2e2e !important;
+            color: #e0e0e0 !important;
+        }
+        .dark-theme .stButton > button {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .dark-theme .stButton > button:hover {
+            background-color: #45a049;
+        }
+        .dark-theme .stAlert {
+            color: #e0e0e0 !important;
+            background-color: #2e2e2e !important;
+        }
+        .dark-theme .stAlert > div {
+            color: #e0e0e0 !important;
+        }
+        .icon {
+            margin-right: 10px;
+        }
+        .title {
+            text-align: center;
+            font-size: 2.5em;
+            color: #182848;
+            margin-bottom: 20px;
+        }
+        .dark-theme .title {
+            color: #e0e0e0;
+        }
+        .main-container {
+            padding: 20px;
+            border-radius: 10px;
+            background-color: rgba(255, 255, 255, 0.9);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            margin: auto;
+        }
+        .dark-theme .main-container {
+            background-color: rgba(30, 30, 30, 0.9);
+        }
+        .sidebar-heading {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #e0e0e0;
+            margin-bottom: 10px;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # Theme Toggle
-theme = st.sidebar.selectbox("Choose Theme", ["Light", "Dark"])
-if theme == "Dark":
-    st.markdown("""
-    <style>
-        section[data-testid="stSidebar"] { background-color: #1E1E1E; }
-        .stApp { background-color: #121212; color: white; }
-        .stTextInput > div > div > input { background-color: #2E2E2E; color: white; }
-        .stButton > button { background-color: #4CAF50; color: white; }
-        .stFileUploader > div > div > div { background-color: #2E2E2E; color: white; }
-    </style>
-    """, unsafe_allow_html=True)
-else:
-    st.markdown("""
-    <style>
-        section[data-testid="stSidebar"] { background-color: #FFFFFF; }
-        .stApp { background-color: #F0F2F6; color: black; }
-        .stTextInput > div > div > input { background-color: #FFFFFF; color: black; }
-        .stButton > button { background-color: #4CAF50; color: white; }
-        .stFileUploader > div > div > div { background-color: #FFFFFF; color: black; }
-    </style>
-    """, unsafe_allow_html=True)
+if 'theme' not in st.session_state:
+    st.session_state.theme = 'Light'
 
-st.title("🤖 RAG AI Question-Answering App")
-st.sidebar.header("Settings")
+theme = st.session_state.theme
+st.markdown(f'<style>.stApp {{ {"background: linear-gradient(135deg, #1c2526 0%, #2e3b3e 100%); color: #e0e0e0;" if theme == "Dark" else ""} }}</style>', unsafe_allow_html=True)
+st.sidebar.markdown('<p class="sidebar-heading"><i class="fas fa-cog icon"></i>Settings</p>', unsafe_allow_html=True)
+theme = st.sidebar.selectbox("Choose Theme", ["Light", "Dark"], key="theme")
 
-# File Uploader for PDF
-uploaded_file = st.sidebar.file_uploader("Upload a PDF document", type=["pdf"])
+st.markdown(f'<h1 class="title"><i class="fas fa-book-open icon"></i>Smart Document Query</h1>', unsafe_allow_html=True)
 
-if 'vector_store' not in st.session_state:
-    st.session_state.vector_store = None
-    st.session_state.rag_chain = None
+# Main content in a styled container
+with st.container():
+    st.markdown(f'<div class="main-container {"dark-theme" if theme == "Dark" else ""}">', unsafe_allow_html=True)
+    
+    # File Uploader
+    st.sidebar.markdown('<p><i class="fas fa-upload icon"></i>Upload a document</p>', unsafe_allow_html=True)
+    uploaded_file = st.sidebar.file_uploader("", type=["pdf", "txt", "docx"], label_visibility="collapsed")
 
-if st.sidebar.button("Load and Index Document"):
+    # Display file name
     if uploaded_file is not None:
-        with st.spinner("Loading and indexing..."):
-            docs = load_documents(uploaded_file)
-            if docs:
-                chunks = split_documents(docs)
-                if chunks:
-                    st.session_state.vector_store = create_vector_store(chunks)
-                    if st.session_state.vector_store:
-                        st.session_state.rag_chain = setup_rag_chain(st.session_state.vector_store)
-                        st.sidebar.success("Document indexed successfully!")
-                    else:
-                        st.sidebar.error("Failed to create vector store. Check the PDF content.")
-                else:
-                    st.sidebar.error("No valid chunks extracted from the PDF.")
-            else:
-                st.sidebar.error("Failed to load the PDF. Ensure it's a valid, text-based PDF.")
-    else:
-        st.sidebar.error("Please upload a PDF file first.")
+        st.sidebar.markdown(f'<p><i class="fas fa-file icon"></i>Uploaded: {uploaded_file.name}</p>', unsafe_allow_html=True)
 
-query = st.text_input("Ask a question about the document:")
-if query and st.session_state.rag_chain:
-    with st.spinner("Generating answer..."):
-        try:
-            response = st.session_state.rag_chain.invoke(query)
-            st.write("**Answer:**", response)
-        except Exception as e:
-            st.error(f"Error generating answer: {str(e)}")
-else:
-    st.info("Upload and index a PDF document first, then ask a question!")
+    if 'vector_store' not in st.session_state:
+        st.session_state.vector_store = None
+        st.session_state.rag_chain = None
+
+    if st.sidebar.button("Load and Index Document"):
+        if uploaded_file is not None:
+            with st.spinner("Processing document..."):
+                # Progress bar
+                progress_bar = st.progress(0)
+                progress_bar.progress(10)  # Start
+                docs = load_documents(uploaded_file)
+                progress_bar.progress(50)  # After loading
+                if docs:
+                    chunks = split_documents(docs)
+                    if chunks:
+                        st.session_state.vector_store = create_vector_store(chunks)
+                        progress_bar.progress(90)  # After vector store
+                        if st.session_state.vector_store:
+                            st.session_state.rag_chain = setup_rag_chain(st.session_state.vector_store)
+                            st.sidebar.success(f"Indexed {uploaded_file.name} successfully!")
+                        else:
+                            st.sidebar.error("Failed to create vector store. Check the document content.")
+                        progress_bar.progress(100)  # Complete
+                    else:
+                        st.sidebar.error("No valid content extracted from the document.")
+                        progress_bar.empty()
+                else:
+                    st.sidebar.error("Failed to load the document. Ensure it's a valid file.")
+                    progress_bar.empty()
+        else:
+            st.sidebar.error("Please upload a file first.")
+            progress_bar.empty()
+
+    st.markdown('<p><i class="fas fa-question-circle icon"></i>Ask a question about the document:</p>', unsafe_allow_html=True)
+    query = st.text_input("", placeholder="Type your question here...", label_visibility="collapsed")
+    if query and st.session_state.rag_chain:
+        with st.spinner("Generating answer..."):
+            try:
+                response = st.session_state.rag_chain.invoke(query)
+                st.markdown(f'<p><strong>Answer:</strong> {response}</p>', unsafe_allow_html=True)
+            except Exception as e:
+                st.error(f"Error generating answer: {str(e)}")
+    else:
+        st.info("Upload and index a document first, then ask a question!")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
