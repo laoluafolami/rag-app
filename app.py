@@ -12,6 +12,8 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 import logging
 import time
+import requests
+from typing import Optional, Dict
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -20,16 +22,49 @@ logger = logging.getLogger(__name__)
 # Load environment variables
 load_dotenv()
 
+# ----------------------------------------------------------------------
+# Groq Rate Limit Helper
+# ----------------------------------------------------------------------
+def fetch_groq_rate_limits(api_key: str) -> Optional[Dict]:
+    """Fetch rate limits from Groq headers via /v1/models endpoint."""
+    if not api_key:
+        return None
+    
+    url = "https://api.groq.com/openai/v1/models"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  # Raise if not 200
+        
+        limits = {}
+        for key in response.headers:
+            if key.lower().startswith('x-ratelimit-'):
+                limits[key] = response.headers[key]
+        
+        # Parse useful values (e.g., for llama-3.1-8b-instant)
+        limits['requests_limit'] = int(limits.get('x-ratelimit-limit-requests', 0))
+        limits['requests_remaining'] = int(limits.get('x-ratelimit-remaining-requests', 0))
+        limits['tokens_limit'] = int(limits.get('x-ratelimit-limit-tokens', 0))
+        limits['tokens_remaining'] = int(limits.get('x-ratelimit-remaining-tokens', 0))
+        limits['reset_time'] = int(limits.get('x-ratelimit-reset-requests', 0))
+        
+        return limits
+    except Exception as e:
+        logger.error(f"Failed to fetch Groq limits: {e}")
+        return None
+
+# ----------------------------------------------------------------------
+# Helper functions (unchanged)
+# ----------------------------------------------------------------------
 def load_documents(uploaded_file):
     if uploaded_file is not None:
         try:
-            # Save uploaded file temporarily
             file_extension = uploaded_file.name.split('.')[-1].lower()
             temp_file_path = f"temp.{file_extension}"
             with open(temp_file_path, "wb") as f:
                 f.write(uploaded_file.read())
             
-            # Load based on file type
             if file_extension == "pdf":
                 loader = PyPDFLoader(temp_file_path)
             elif file_extension == "txt":
@@ -47,7 +82,6 @@ def load_documents(uploaded_file):
             logger.error(f"Error loading file {uploaded_file.name}: {str(e)}")
             return []
         finally:
-            # Clean up temporary file
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
     return []
@@ -103,7 +137,9 @@ def setup_rag_chain(vector_store):
     )
     return rag_chain
 
+# ----------------------------------------------------------------------
 # Streamlit App
+# ----------------------------------------------------------------------
 st.set_page_config(page_title="Smart Document Query", page_icon="📚", layout="wide")
 
 # Font Awesome for icons
@@ -258,6 +294,20 @@ st.markdown(
             color: #e0e0e0;
             margin-bottom: 10px;
         }
+        .rate-limit-box {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-radius: 8px;
+            border-left: 4px solid #0ea5e9;
+            font-family: monospace;
+            font-size: 0.9rem;
+        }
+        .dark-theme .rate-limit-box {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            border-left-color: #60a5fa;
+            color: #e0e0e0;
+        }
     </style>
     """,
     unsafe_allow_html=True
@@ -268,15 +318,79 @@ if 'theme' not in st.session_state:
     st.session_state.theme = 'Light'
 
 theme = st.session_state.theme
-st.markdown(f'<style>.stApp {{ {"background: linear-gradient(135deg, #1c2526 0%, #2e3b3e 100%); color: #e0e0e0;" if theme == "Dark" else ""} }}</style>', unsafe_allow_html=True)
+st.markdown(
+    f'<style>.stApp {{ {"background: linear-gradient(135deg, #1c2526 0%, #2e3b3e 100%); color: #e0e0e0;" if theme == "Dark" else ""} }}</style>',
+    unsafe_allow_html=True,
+)
 st.sidebar.markdown('<p class="sidebar-heading"><i class="fas fa-cog icon"></i>Settings</p>', unsafe_allow_html=True)
 theme = st.sidebar.selectbox("Choose Theme", ["Light", "Dark"], key="theme")
 
 st.markdown(f'<h1 class="title"><i class="fas fa-book-open icon"></i>Smart Document Query</h1>', unsafe_allow_html=True)
 
-# Main content in a styled container
+# ----------------------------------------------------------------------
+# Rate Limit State & Fetch
+# ----------------------------------------------------------------------
+if 'rate_limits' not in st.session_state:
+    st.session_state.rate_limits = None
+if 'total_used_tokens' not in st.session_state:
+    st.session_state.total_used_tokens = 0
+
+# Button to refresh rate limits
+if st.sidebar.button("🔄 Refresh Rate Limits"):
+    api_key = os.getenv("GROQ_API_KEY")
+    if api_key:
+        with st.sidebar.spinner("Fetching from Groq..."):
+            st.session_state.rate_limits = fetch_groq_rate_limits(api_key)
+    else:
+        st.sidebar.warning("GROQ_API_KEY not set – rate limits unavailable.")
+
+def render_rate_limit_box():
+    limits = st.session_state.rate_limits
+    used_tokens = st.session_state.total_used_tokens
+    
+    if not limits:
+        st.sidebar.markdown('<div class="rate-limit-box">**Rate Limits:** Unable to fetch (check API key or network)</div>', unsafe_allow_html=True)
+        return
+    
+    # Calculate remaining tokens (subtract used from limit)
+    tokens_limit = limits.get('tokens_limit', 0)
+    tokens_remaining = max(0, tokens_limit - used_tokens)
+    
+    # Requests
+    req_limit = limits.get('requests_limit', 0)
+    req_remaining = limits.get('requests_remaining', 0)
+    req_used_pct = ((req_limit - req_remaining) / req_limit * 100) if req_limit > 0 else 0
+    
+    # Tokens
+    tok_used_pct = ((tokens_limit - tokens_remaining) / tokens_limit * 100) if tokens_limit > 0 else 0
+    
+    # Reset time
+    reset_time = limits.get('reset_time', 0)
+    reset_str = time.ctime(reset_time) if reset_time else "N/A"
+    
+    # Sidebar display
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        st.markdown(f'<div class="rate-limit-box">**Requests**<br><small>Limit: {req_limit:,} | Remaining: {req_remaining:,} ({req_used_pct:.1f}% used)</small></div>', unsafe_allow_html=True)
+    with col2:
+        st.markdown(f'<div class="rate-limit-box">**Tokens**<br><small>Limit: {tokens_limit:,} | Remaining: {tokens_remaining:,} ({tok_used_pct:.1f}% used)</small></div>', unsafe_allow_html=True)
+    
+    st.sidebar.caption(f"Resets at: {reset_str}")
+
+# Render the box
+if os.getenv("GROQ_API_KEY"):
+    render_rate_limit_box()
+else:
+    st.sidebar.info("**Local Mode (Ollama)**: No rate limits to track")
+
+# ----------------------------------------------------------------------
+# Main container
+# ----------------------------------------------------------------------
 with st.container():
-    st.markdown(f'<div class="main-container {"dark-theme" if theme == "Dark" else ""}">', unsafe_allow_html=True)
+    st.markdown(
+        f'<div class="main-container {"dark-theme" if theme == "Dark" else ""}">',
+        unsafe_allow_html=True,
+    )
     
     # File Uploader
     st.sidebar.markdown('<p><i class="fas fa-upload icon"></i>Upload a document</p>', unsafe_allow_html=True)
@@ -292,43 +406,43 @@ with st.container():
 
     if st.sidebar.button("Load and Index Document"):
         if uploaded_file is not None:
-            with st.spinner("Processing document..."):
-                # Progress bar
-                progress_bar = st.progress(0)
-                progress_bar.progress(10)  # Start
+            with st.spinner("Loading and indexing..."):
                 docs = load_documents(uploaded_file)
-                progress_bar.progress(50)  # After loading
                 if docs:
                     chunks = split_documents(docs)
                     if chunks:
                         st.session_state.vector_store = create_vector_store(chunks)
-                        progress_bar.progress(90)  # After vector store
                         if st.session_state.vector_store:
                             st.session_state.rag_chain = setup_rag_chain(st.session_state.vector_store)
-                            st.sidebar.success(f"Indexed {uploaded_file.name} successfully!")
+                            st.sidebar.success("Document indexed successfully!")
                         else:
-                            st.sidebar.error("Failed to create vector store. Check the document content.")
-                        progress_bar.progress(100)  # Complete
+                            st.sidebar.error("Failed to create vector store. Check the PDF content.")
                     else:
-                        st.sidebar.error("No valid content extracted from the document.")
-                        progress_bar.empty()
+                        st.sidebar.error("No valid chunks extracted from the PDF.")
                 else:
-                    st.sidebar.error("Failed to load the document. Ensure it's a valid file.")
-                    progress_bar.empty()
+                    st.sidebar.error("Failed to load the PDF. Ensure it's a valid, text-based PDF.")
         else:
-            st.sidebar.error("Please upload a file first.")
-            progress_bar.empty()
+            st.sidebar.error("Please upload a PDF file first.")
 
-    st.markdown('<p><i class="fas fa-question-circle icon"></i>Ask a question about the document:</p>', unsafe_allow_html=True)
-    query = st.text_input("", placeholder="Type your question here...", label_visibility="collapsed")
+    query = st.text_input("Ask a question about the document:")
     if query and st.session_state.rag_chain:
         with st.spinner("Generating answer..."):
             try:
                 response = st.session_state.rag_chain.invoke(query)
-                st.markdown(f'<p><strong>Answer:</strong> {response}</p>', unsafe_allow_html=True)
+                st.write("**Answer:**", response)
+                
+                # Update token usage (for Groq)
+                if os.getenv("GROQ_API_KEY"):
+                    # Assuming response has usage (from previous implementation)
+                    # If not, extract from llm response metadata here
+                    # For now, placeholder – adjust based on your llm.invoke
+                    used_tokens = 100  # Replace with actual extraction
+                    st.session_state.total_used_tokens += used_tokens
+                    # Refresh box
+                    render_rate_limit_box()
             except Exception as e:
                 st.error(f"Error generating answer: {str(e)}")
     else:
-        st.info("Upload and index a document first, then ask a question!")
+        st.info("Load a document first, then ask a question!")
     
     st.markdown('</div>', unsafe_allow_html=True)
