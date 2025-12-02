@@ -1,21 +1,23 @@
-# Smart Document Query  
+# RAG-APP (Smart Document Query) 
 ### Chat with any document — instantly, accurately, beautifully
 
-[![Streamlit App](https://img.shields.io/badge/%F0%9F%94%B4%20Live%20Demo-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://your-app-name.streamlit.app)
+[![Streamlit App](https://img.shields.io/badge/%F0%9F%94%B4%20Live%20Demo-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://smartdocquery.streamlit.app/)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/yourusername/rag-app?style=social)](https://github.com/yourusername/rag-app)
+[![Stars](https://img.shields.io/github/stars/yourusername/rag-app?style=social)](https://github.com/laoluafolami/rag-app)
 
 > **Upload a PDF, DOCX, or TXT → Ask anything → Get perfect answers in seconds.**  
 > No hallucinations. No fluff. Powered by **Retrieval-Augmented Generation (RAG)**.
 
 Live App → https://smartdocquery.streamlit.app/ 
 
+<img width="1601" height="878" alt="image" src="https://github.com/user-attachments/assets/13c7c4ba-6906-47ea-8368-a357b8033327" />
+
 ---
 
-## Animated Architecture — Watch the Magic Happen
+## Architecture — Watch the Magic Happen
 
-![Smart Document Query – Animated Architecture](https://i.imgur.com/3nK8vL9.gif)
+<img width="586" height="758" alt="image" src="https://github.com/user-attachments/assets/b6a9189d-7414-4100-b304-1ae58460a115" />
 
 *See how your document becomes intelligent — from upload to answer in real time*
 
